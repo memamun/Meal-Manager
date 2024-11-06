@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:meal/screens/shopping_history_screen.dart';
+import 'package:meal/models/transaction.dart';
 
 class ShoppingScreen extends StatefulWidget {
   const ShoppingScreen({super.key});
@@ -16,14 +18,46 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
   DateTime _selectedDate = DateTime.now();
   final _costController = TextEditingController();
   
-  final members = [
-    'Sajeb',
-    'Nahid',
-    'Mamun',
-    'Rakib',
-    'Mostakim',
-    'Ferose',
-  ];
+  // Add stream for members
+  Stream<List<String>> _getMembersStream() {
+    return FirebaseFirestore.instance
+        .collection('members')
+        .orderBy('name')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => doc.data()['name'] as String)
+            .toList());
+  }
+
+  // Update the member dropdown to use StreamBuilder
+  Widget _buildMemberDropdown() {
+    return StreamBuilder<List<String>>(
+      stream: _getMembersStream(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const CircularProgressIndicator();
+        }
+
+        final members = snapshot.data!;
+        
+        return DropdownButtonFormField<String>(
+          value: _selectedMember,
+          decoration: InputDecoration(
+            labelText: 'Shopper',
+            prefixIcon: const Icon(Icons.person),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          items: members.map((member) {
+            return DropdownMenuItem(value: member, child: Text(member));
+          }).toList(),
+          onChanged: (value) => setState(() => _selectedMember = value),
+          validator: (value) => value == null ? 'Please select a shopper' : null,
+        );
+      },
+    );
+  }
 
   String? _editSelectedMember;
   DateTime _editSelectedDate = DateTime.now();
@@ -73,19 +107,31 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    DropdownButtonFormField<String>(
-                      value: _editSelectedMember,
-                      decoration: InputDecoration(
-                        labelText: 'Shopper',
-                        prefixIcon: const Icon(Icons.person),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      items: members.map((member) {
-                        return DropdownMenuItem(value: member, child: Text(member));
-                      }).toList(),
-                      onChanged: (value) => setState(() => _editSelectedMember = value),
+                    StreamBuilder<List<String>>(
+                      stream: _getMembersStream(),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) {
+                          return const CircularProgressIndicator();
+                        }
+
+                        final members = snapshot.data!;
+                        
+                        return DropdownButtonFormField<String>(
+                          value: _editSelectedMember,
+                          decoration: InputDecoration(
+                            labelText: 'Shopper',
+                            prefixIcon: const Icon(Icons.person),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          items: members.map((member) {
+                            return DropdownMenuItem(value: member, child: Text(member));
+                          }).toList(),
+                          onChanged: (value) => setState(() => _editSelectedMember = value),
+                          validator: (value) => value == null ? 'Please select a shopper' : null,
+                        );
+                      },
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -265,21 +311,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                     const SizedBox(height: 24),
                     
                     // Form Fields
-                    DropdownButtonFormField<String>(
-                      value: _selectedMember,
-                      decoration: InputDecoration(
-                        labelText: 'Shopper',
-                        prefixIcon: const Icon(Icons.person),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      items: members.map((member) {
-                        return DropdownMenuItem(value: member, child: Text(member));
-                      }).toList(),
-                      onChanged: (value) => setState(() => _selectedMember = value),
-                      validator: (value) => value == null ? 'Please select a shopper' : null,
-                    ),
+                    _buildMemberDropdown(),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _costController,
@@ -341,7 +373,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                     ),
                     const SizedBox(height: 24),
                     FilledButton.icon(
-                      onPressed: _submitShoppingEntry,
+                      onPressed: _submitForm,
                       icon: const Icon(Icons.add),
                       label: const Text('Add Shopping'),
                       style: FilledButton.styleFrom(
@@ -363,73 +395,237 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
               stream: FirebaseFirestore.instance
                   .collection('shopping')
                   .orderBy('date', descending: true)
+                  .limit(3)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: snapshot.data!.docs.length,
-                  itemBuilder: (context, index) {
-                    final doc = snapshot.data!.docs[index];
-                    final entry = doc.data() as Map<String, dynamic>;
-                    final date = DateTime.parse(entry['date']);
-
-                    return Dismissible(
-                      key: Key(doc.id),
-                      background: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 20),
-                        child: Icon(Icons.delete, color: Colors.red.shade700),
-                      ),
-                      child: Card(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
+                return Column(
+                  children: [
+                    // Header with View All button
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Recent Shopping',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                          leading: CircleAvatar(
-                            backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
-                            child: Text(
-                              entry['shopperName'][0],
-                              style: TextStyle(
-                                color: Theme.of(context).primaryColor,
-                                fontWeight: FontWeight.bold,
+                          TextButton.icon(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => ShoppingHistoryScreen(
+                                    onEdit: _showEditDialog,
+                                  ),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.history),
+                            label: const Text('View All'),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Recent transactions list
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: snapshot.data!.docs.length,
+                        itemBuilder: (context, index) {
+                          final doc = snapshot.data!.docs[index];
+                          final entry = doc.data() as Map<String, dynamic>;
+                          final date = DateTime.parse(entry['date']);
+
+                          return Dismissible(
+                            key: Key(doc.id),
+                            background: Container(
+                              margin: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFE5E5),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 24),
+                              child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFFF3B30), size: 28),
+                            ),
+                            direction: DismissDirection.endToStart,
+                            confirmDismiss: (direction) {
+                              return showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Delete Shopping Entry'),
+                                  content: const Text('Are you sure you want to delete this shopping entry?'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context, false),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context, true),
+                                      child: const Text('Delete'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                            onDismissed: (direction) async {
+                              try {
+                                // Get the transaction ID from the shopping entry
+                                final transactionId = entry['transactionId'];
+                                
+                                // Create a batch write
+                                final batch = FirebaseFirestore.instance.batch();
+                                
+                                // Delete the shopping entry
+                                batch.delete(doc.reference);
+                                
+                                // Delete the corresponding transaction if it exists
+                                if (transactionId != null) {
+                                  final transactionRef = FirebaseFirestore.instance
+                                      .collection('transactions')
+                                      .doc(transactionId);
+                                  batch.delete(transactionRef);
+
+                                  // Update member balance
+                                  final memberId = await getMemberId(entry['shopperName']);
+                                  if (memberId != null) {
+                                    final memberRef = FirebaseFirestore.instance
+                                        .collection('members')
+                                        .doc(memberId);
+                                    batch.update(memberRef, {
+                                      'balance': FieldValue.increment(entry['cost']), // Add back the amount
+                                      'updatedAt': FieldValue.serverTimestamp(),
+                                    });
+                                  }
+                                }
+
+                                // Commit the batch
+                                await batch.commit();
+
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Shopping entry deleted successfully'),
+                                      backgroundColor: Colors.green,
+                                      duration: Duration(seconds: 4),
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Error deleting entry: $e'),
+                                      backgroundColor: Colors.red,
+                                      duration: const Duration(seconds: 4),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                            child: Card(
+                              margin: const EdgeInsets.symmetric(vertical: 8),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                side: BorderSide(color: Colors.grey.shade200),
+                              ),
+                              child: InkWell(
+                                onTap: () => _showEditDialog(doc),
+                                borderRadius: BorderRadius.circular(16),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Row(
+                                    children: [
+                                      // Date Bubble
+                                      Container(
+                                        width: 56,
+                                        height: 56,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF6B4EFF).withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(14),
+                                        ),
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              DateFormat('dd').format(date),
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 20,
+                                                color: Color(0xFF6B4EFF),
+                                              ),
+                                            ),
+                                            Text(
+                                              DateFormat('MMM').format(date).toUpperCase(),
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFF6B4EFF),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      // Details
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              entry['shopperName'],
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 18,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              DateFormat('MMMM dd, yyyy').format(date),
+                                              style: TextStyle(
+                                                color: Colors.grey[600],
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      // Amount
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFF4D6D).withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          '৳ ${entry['cost'].toStringAsFixed(2)}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 18,
+                                            color: Color(0xFFFF4D6D),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                          title: Text(
-                            entry['shopperName'],
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(
-                            DateFormat('MMMM dd, yyyy').format(date),
-                            style: TextStyle(color: Colors.grey[600]),
-                          ),
-                          trailing: Text(
-                            '৳ ${entry['cost'].toStringAsFixed(2)}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: Theme.of(context).primaryColor,
-                            ),
-                          ),
-                          onTap: () => _showEditDialog(doc),
-                        ),
+                          );
+                        },
                       ),
-                    );
-                  },
+                    ),
+                  ],
                 );
               },
             ),
@@ -439,42 +635,73 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     );
   }
 
-  Future<void> _submitShoppingEntry() async {
+  Future<void> _submitForm() async {
     if (_addFormKey.currentState!.validate()) {
       try {
+        final cost = double.parse(_costController.text);
+        
+        // Add to transactions first
+        final memberId = await getMemberId(_selectedMember!);
+        if (memberId == null) {
+          throw Exception('Member not found');
+        }
+
+        final transactionId = await MessTransaction.addShoppingTransaction(
+          memberId: memberId,
+          memberName: _selectedMember!,
+          amount: cost,
+          description: 'Shopping expenses',
+        );
+
+        // Then add to shopping collection with transaction reference
         await FirebaseFirestore.instance.collection('shopping').add({
           'shopperName': _selectedMember,
-          'cost': double.parse(_costController.text),
+          'cost': cost,
           'date': _selectedDate.toIso8601String(),
+          'transactionId': transactionId, // Store the transaction ID
           'createdAt': FieldValue.serverTimestamp(),
         });
 
         if (mounted) {
-          _costController.clear();
-          setState(() {
-            _selectedMember = null;
-            _selectedDate = DateTime.now();
-          });
-          
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Shopping entry added successfully'),
               backgroundColor: Colors.green,
-              duration: Duration(seconds: 4),
             ),
           );
+          _resetForm();
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error adding shopping entry: $e'),
+              content: Text('Error: ${e.toString()}'),
               backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
             ),
           );
         }
       }
     }
+  }
+
+  void _resetForm() {
+    _costController.clear();
+    setState(() {
+      _selectedMember = null;
+      _selectedDate = DateTime.now();
+    });
+  }
+
+  Future<String?> getMemberId(String memberName) async {
+    final querySnapshot = await FirebaseFirestore.instance
+        .collection('members')
+        .where('name', isEqualTo: memberName)
+        .limit(1)
+        .get();
+    
+    if (querySnapshot.docs.isNotEmpty) {
+      return querySnapshot.docs.first.id;
+    }
+    return null;
   }
 } 

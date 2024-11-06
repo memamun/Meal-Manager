@@ -4,42 +4,58 @@ class MealEntry {
   final String id;
   final String memberId;
   final DateTime date;
-  final int mealCount;
+  final int regularMeals;
+  final int guestMeals;
   final bool hasBreakfast;
-  final int guestMealCount;
-  final int guestBreakfastCount;
+  final int guestBreakfast;
+  final double mealRate;
+  final double breakfastRate;
 
   MealEntry({
     required this.id,
     required this.memberId,
     required this.date,
-    required this.mealCount,
-    required this.hasBreakfast,
-    this.guestMealCount = 0,
-    this.guestBreakfastCount = 0,
-  }) : assert(mealCount >= 0, 'Meal count must be non-negative');
-
-  factory MealEntry.fromMap(String id, Map<String, dynamic> map) {
-    return MealEntry(
-      id: id,
-      memberId: map['memberId'] as String,
-      date: DateTime.parse(map['date']),
-      mealCount: (map['mealCount'] as num?)?.toInt() ?? 0,
-      hasBreakfast: map['hasBreakfast'] as bool? ?? false,
-      guestMealCount: (map['guestMealCount'] as num?)?.toInt() ?? 0,
-      guestBreakfastCount: (map['guestBreakfastCount'] as num?)?.toInt() ?? 0,
-    );
-  }
+    this.regularMeals = 0,
+    this.guestMeals = 0,
+    this.hasBreakfast = false,
+    this.guestBreakfast = 0,
+    this.mealRate = 0.0,
+    this.breakfastRate = 8.0, // Default breakfast rate
+  });
 
   Map<String, dynamic> toMap() {
     return {
       'memberId': memberId,
       'date': date.toIso8601String(),
-      'mealCount': mealCount,
+      'regularMeals': regularMeals,
+      'guestMeals': guestMeals,
       'hasBreakfast': hasBreakfast,
-      'guestMealCount': guestMealCount,
-      'guestBreakfastCount': guestBreakfastCount,
+      'guestBreakfast': guestBreakfast,
+      'mealRate': mealRate,
+      'breakfastRate': breakfastRate,
+      'totalCost': calculateTotalCost(),
       'createdAt': FieldValue.serverTimestamp(),
+      'month': date.month,
+      'year': date.year,
     };
+  }
+
+  double calculateTotalCost() {
+    return (regularMeals + guestMeals) * mealRate +
+           ((hasBreakfast ? 1 : 0) + guestBreakfast) * breakfastRate;
+  }
+
+  static MealEntry fromMap(String id, Map<String, dynamic> map) {
+    return MealEntry(
+      id: id,
+      memberId: map['memberId'],
+      date: DateTime.parse(map['date']),
+      regularMeals: map['regularMeals'] ?? 0,
+      guestMeals: map['guestMeals'] ?? 0,
+      hasBreakfast: map['hasBreakfast'] ?? false,
+      guestBreakfast: map['guestBreakfast'] ?? 0,
+      mealRate: (map['mealRate'] as num?)?.toDouble() ?? 0.0,
+      breakfastRate: (map['breakfastRate'] as num?)?.toDouble() ?? 8.0,
+    );
   }
 } 

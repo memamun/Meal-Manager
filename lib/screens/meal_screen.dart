@@ -154,35 +154,37 @@ class _MealScreenState extends State<MealScreen> {
       (membersSnapshot, shoppingSnapshot, extraSnapshot, savingsSnapshot) {
         int totalMeals = 0;
         int totalBreakfasts = 0;
-        double totalExpenses = 0;
+        double totalExpenses = 0.0;
         Map<String, double> memberSavings = {};
 
         final members = membersSnapshot.docs;
         for (var doc in members) {
           final data = doc.data() as Map<String, dynamic>;
-          totalMeals += (data['totalMeals'] as num).toInt();
-          totalBreakfasts += (data['totalBreakfasts'] ?? 0) as int;
+          totalMeals += (data['totalMeals'] as num?)?.toInt() ?? 0;
+          totalBreakfasts += (data['totalBreakfasts'] as num?)?.toInt() ?? 0;
         }
 
-        final totalBreakfastCost = totalBreakfasts * 8.0;
+        final double totalBreakfastCost = totalBreakfasts * 8.0;
 
         for (var doc in shoppingSnapshot.docs) {
           final data = doc.data() as Map<String, dynamic>;
-          totalExpenses += (data['cost'] as num).toDouble();
+          totalExpenses += (data['cost'] as num?)?.toDouble() ?? 0.0;
         }
         for (var doc in extraSnapshot.docs) {
           final data = doc.data() as Map<String, dynamic>;
-          totalExpenses += (data['cost'] as num).toDouble();
+          totalExpenses += (data['cost'] as num?)?.toDouble() ?? 0.0;
         }
 
-        final mealOnlyExpenses = totalExpenses - totalBreakfastCost;
-        final mealRate = totalMeals > 0 ? mealOnlyExpenses / totalMeals : 0;
+        final double mealOnlyExpenses = totalExpenses - totalBreakfastCost;
+        final double mealRate = totalMeals > 0 ? mealOnlyExpenses / totalMeals : 0.0;
 
         for (var doc in savingsSnapshot.docs) {
           final data = doc.data() as Map<String, dynamic>;
-          final name = data['memberName'] as String;
-          final amount = (data['amount'] as num).toDouble();
-          memberSavings[name] = (memberSavings[name] ?? 0) + amount;
+          final name = data['memberName'] as String? ?? '';
+          if (name.isNotEmpty) {
+            final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
+            memberSavings[name] = (memberSavings[name] ?? 0.0) + amount;
+          }
         }
 
         return {
@@ -296,15 +298,15 @@ class _MealScreenState extends State<MealScreen> {
     double mealRate
   ) {
     final memberData = memberSnapshot.data() as Map<String, dynamic>;
-    final name = memberData['name'] as String;
-    final totalMeals = memberData['totalMeals'] as num;
-    final totalBreakfasts = (memberData['totalBreakfasts'] ?? 0) as int;
+    final name = memberData['name'] as String? ?? 'Unknown';
+    final totalMeals = (memberData['totalMeals'] as num?)?.toInt() ?? 0;
+    final totalBreakfasts = (memberData['totalBreakfasts'] as num?)?.toInt() ?? 0;
     
-    final mealCost = totalMeals * mealRate;
-    final breakfastCost = totalBreakfasts * 8.0;
-    final totalCost = mealCost + breakfastCost;
-    final savings = memberSavings[name] ?? 0;
-    final balance = savings - totalCost;
+    final double mealCost = totalMeals * mealRate;
+    final double breakfastCost = totalBreakfasts * 8.0;
+    final double totalCost = mealCost + breakfastCost;
+    final double savings = memberSavings[name] ?? 0.0;
+    final double balance = savings - totalCost;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),

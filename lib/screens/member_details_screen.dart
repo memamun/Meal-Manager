@@ -21,11 +21,9 @@ class MemberDetailsScreen extends StatefulWidget {
 }
 
 class _MemberDetailsScreenState extends State<MemberDetailsScreen> {
-  CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   Map<DateTime, Map<String, dynamic>> _mealEvents = {};
-  bool _hasBreakfast = false;
   final Map<String, GlobalKey<AnimatedListState>> _listKeys = {};
   bool _isMealHistoryExpanded = false;
 
@@ -80,455 +78,560 @@ class _MemberDetailsScreenState extends State<MemberDetailsScreen> {
           IconButton(
             icon: const Icon(Icons.info_outline),
             onPressed: () {
-              // Show member stats
+              showDialog(
+                context: context,
+                builder: (context) => Dialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 400),
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '${widget.memberName}\'s Statistics',
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.pop(context),
+                              icon: const Icon(Icons.close),
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.grey[100],
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+                        StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('meals')
+                              .where('memberId', isEqualTo: widget.memberId)
+                              .snapshots(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) {
+                              return const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(20),
+                                  child: CircularProgressIndicator(),
+                                ),
+                              );
+                            }
+
+                            int totalMeals = 0;
+                            int totalBreakfasts = 0;
+                            int totalGuestMeals = 0;
+                            int totalGuestBreakfasts = 0;
+
+                            for (var doc in snapshot.data!.docs) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              totalMeals += (data['mealCount'] as num?)?.toInt() ?? 0;
+                              if (data['hasBreakfast'] == true) totalBreakfasts++;
+                              totalGuestMeals += (data['guestMealCount'] as num?)?.toInt() ?? 0;
+                              totalGuestBreakfasts += (data['guestBreakfastCount'] as num?)?.toInt() ?? 0;
+                            }
+
+                            return Column(
+                              children: [
+                                _buildSummaryCard(
+                                  icon: Icons.restaurant,
+                                  title: 'Total Meals',
+                                  value: totalMeals.toString(),
+                                  color: Colors.blue,
+                                ),
+                                const SizedBox(height: 12),
+                                _buildSummaryCard(
+                                  icon: Icons.breakfast_dining,
+                                  title: 'Total Breakfasts',
+                                  value: totalBreakfasts.toString(),
+                                  color: Colors.orange,
+                                ),
+                                const SizedBox(height: 12),
+                                _buildSummaryCard(
+                                  icon: Icons.people,
+                                  title: 'Guest Meals',
+                                  value: totalGuestMeals.toString(),
+                                  color: Colors.purple,
+                                ),
+                                const SizedBox(height: 12),
+                                _buildSummaryCard(
+                                  icon: Icons.person_add,
+                                  title: 'Guest Breakfasts', 
+                                  value: totalGuestBreakfasts.toString(),
+                                  color: Colors.green,
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
             },
-          ),
+          )
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Summary Cards
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    _buildSummaryCard(
-                      icon: Icons.restaurant,
-                      title: 'Total Meals',
-                      value: '32',
-                      color: Colors.blue,
-                    ),
-                    _buildSummaryCard(
-                      icon: Icons.breakfast_dining,
-                      title: 'Breakfasts',
-                      value: '12',
-                      color: Colors.orange,
-                    ),
-                    _buildSummaryCard(
-                      icon: Icons.people,
-                      title: 'Guest Meals',
-                      value: '5',
-                      color: Colors.purple,
-                    ),
-                  ],
-                ),
-              ),
-            ),
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('members')
+            .doc(widget.memberId)
+            .snapshots(),
+        builder: (context, memberSnapshot) {
+          if (!memberSnapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-            // Calendar Section
-            Card(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+          final memberData = memberSnapshot.data!.data() as Map<String, dynamic>;
+          final totalMeals = memberData['totalMeals'] as num? ?? 0;
+          final totalBreakfasts = memberData['totalBreakfasts'] as num? ?? 0;
+
+          return SingleChildScrollView(
+            child: Column(
+              children: [
+                // Financial Summary Card
+                Card(
+                  margin: const EdgeInsets.all(16),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
                       children: [
-                        Icon(Icons.calendar_month, 
-                          color: Theme.of(context).colorScheme.primary),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Meal Calendar',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _buildSummaryCard(
+                              icon: Icons.restaurant,
+                              title: 'Total Meals',
+                              value: totalMeals.toString(),
+                              color: Theme.of(context).primaryColor,
+                            ),
+                            _buildSummaryCard(
+                              icon: Icons.free_breakfast,
+                              title: 'Breakfasts',
+                              value: totalBreakfasts.toString(),
+                              color: Colors.orange,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        // Add more summary widgets if needed
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Calendar Card
+                Card(
+                  margin: const EdgeInsets.all(16),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        TableCalendar(
+                          firstDay: DateTime(DateTime.now().year, DateTime.now().month, 1),
+                          lastDay: DateTime.now(),
+                          focusedDay: _focusedDay,
+                          calendarFormat: CalendarFormat.month,
+                          selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+                          enabledDayPredicate: (day) {
+                            final now = DateTime.now();
+                            return day.month == now.month && 
+                                   day.year == now.year && 
+                                   day.isBefore(now.add(const Duration(days: 1)));
+                          },
+                          availableCalendarFormats: const {
+                            CalendarFormat.month: 'Month',
+                          },
+                          onDaySelected: (selectedDay, focusedDay) {
+                            setState(() {
+                              _selectedDay = selectedDay;
+                              _focusedDay = focusedDay;
+                            });
+
+                            final normalizedDay = DateTime(
+                              selectedDay.year,
+                              selectedDay.month,
+                              selectedDay.day,
+                            );
+
+                            // Query meals for the selected day
+                            FirebaseFirestore.instance
+                                .collection('meals')
+                                .where('memberId', isEqualTo: widget.memberId)
+                                .where('date', isEqualTo: normalizedDay.toIso8601String())
+                                .get()
+                                .then((querySnapshot) {
+                                  if (querySnapshot.docs.isNotEmpty) {
+                                    final mealData = querySnapshot.docs.first.data();
+                                    showModalBottomSheet(
+                                      context: context,
+                                      isScrollControlled: true,
+                                      backgroundColor: Colors.transparent,
+                                      builder: (context) => Container(
+                                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(24),
+                                        ),
+                                        child: SingleChildScrollView(
+                                          padding: const EdgeInsets.all(28),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                                            children: [
+                                              // Header with Date and Close Button
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      TweenAnimationBuilder(
+                                                        duration: const Duration(milliseconds: 500),
+                                                        tween: Tween<double>(begin: 0, end: 1),
+                                                        builder: (context, double value, child) {
+                                                          return Opacity(
+                                                            opacity: value,
+                                                            child: child,
+                                                          );
+                                                        },
+                                                        child: const Text(
+                                                          'Meal Details',
+                                                          style: TextStyle(
+                                                            fontSize: 24,
+                                                            fontWeight: FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 3),
+                                                      Text(
+                                                        DateFormat('MMMM dd, yyyy').format(selectedDay),
+                                                        style: TextStyle(
+                                                          color: Colors.grey[600],
+                                                          fontSize: 18,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  IconButton(
+                                                    onPressed: () => Navigator.pop(context),
+                                                    icon: const Icon(Icons.close),
+                                                    style: IconButton.styleFrom(
+                                                      backgroundColor: Colors.grey[200],
+                                                      padding: const EdgeInsets.all(12),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 28),
+
+                                              // Meal Summary
+                                              _buildModernOptionContainer(
+                                                icon: Icons.restaurant_menu,
+                                                title: 'Meal Summary',
+                                                subtitle: 'Regular and guest meals',
+                                                child: Column(
+                                                  children: [
+                                                    _buildDetailRow(
+                                                      Icons.restaurant,
+                                                      'Regular Meals',
+                                                      '${mealData['mealCount']} meals',
+                                                      color: _getMealColor(mealData['mealCount'] as int),
+                                                    ),
+                                                    if (mealData['hasBreakfast'] == true)
+                                                      _buildDetailRow(
+                                                        Icons.free_breakfast,
+                                                        'Breakfast',
+                                                        'Included',
+                                                        color: Colors.orange,
+                                                      ),
+                                                    if (mealData['guestMealCount'] > 0)
+                                                      _buildDetailRow(
+                                                        Icons.people,
+                                                        'Guest Meals',
+                                                        '${mealData['guestMealCount']} meals',
+                                                        color: Colors.blue,
+                                                      ),
+                                                    if (mealData['guestBreakfastCount'] > 0)
+                                                      _buildDetailRow(
+                                                        Icons.people_outline,
+                                                        'Guest Breakfasts',
+                                                        '${mealData['guestBreakfastCount']} breakfasts',
+                                                        color: Colors.orange,
+                                                      ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const SizedBox(height: 24),
+
+                                              // Action Buttons
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: FilledButton.icon(
+                                                      onPressed: () {
+                                                        Navigator.pop(context);
+                                                        if (mealData['id'] != null) {
+                                                          final mealEntry = MealEntry(
+                                                            id: mealData['id']!,
+                                                            memberId: widget.memberId,
+                                                            date: selectedDay,
+                                                            mealCount: (mealData['mealCount'] as num?)?.toInt() ?? 0,
+                                                            hasBreakfast: mealData['hasBreakfast'] as bool? ?? false,
+                                                            guestMealCount: (mealData['guestMealCount'] as num?)?.toInt() ?? 0,
+                                                            guestBreakfastCount: (mealData['guestBreakfastCount'] as num?)?.toInt() ?? 0,
+                                                          );
+                                                          _showMealEntryDialog(selectedDay, mealEntry);
+                                                        }
+                                                      },
+                                                      icon: const Icon(Icons.edit),
+                                                      label: const Text('Edit Entry'),
+                                                      style: FilledButton.styleFrom(
+                                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                                                        shape: RoundedRectangleBorder(
+                                                          borderRadius: BorderRadius.circular(12),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 12),
+                                                  Expanded(
+                                                    child: OutlinedButton.icon(
+                                                      onPressed: () {
+                                                        Navigator.pop(context);
+                                                        if (mealData['id'] != null) {
+                                                          _deleteMeal(
+                                                            mealData['id']!,
+                                                            (mealData['mealCount'] as num?)?.toInt() ?? 0,
+                                                          );
+                                                        }
+                                                      },
+                                                      icon: const Icon(Icons.delete),
+                                                      label: const Text('Delete'),
+                                                      style: OutlinedButton.styleFrom(
+                                                        foregroundColor: Colors.red,
+                                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                                                        shape: RoundedRectangleBorder(
+                                                          borderRadius: BorderRadius.circular(12),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                });
+                          },
+                          onPageChanged: (focusedDay) {
+                            setState(() {
+                              _focusedDay = focusedDay;
+                            });
+                          },
+                          calendarStyle: CalendarStyle(
+                            todayDecoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primaryContainer,
+                              shape: BoxShape.circle,
+                            ),
+                            selectedDecoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            markerDecoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.secondary,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          eventLoader: (day) {
+                            final normalizedDay = DateTime(day.year, day.month, day.day);
+                            if (_mealEvents.containsKey(normalizedDay)) {
+                              final eventData = _mealEvents[normalizedDay]!;
+                              final regularMeals = eventData['mealCount'] as int? ?? 0;
+                              final guestMeals = eventData['guestMealCount'] as int? ?? 0;
+                              final totalMeals = regularMeals + guestMeals;
+                              
+                              final hasBreakfast = eventData['hasBreakfast'] as bool? ?? false;
+                              final guestBreakfast = eventData['guestBreakfastCount'] as int? ?? 0;
+                              final totalBreakfast = (hasBreakfast ? 1 : 0) + guestBreakfast;
+
+                              final events = <String>[];
+                              if (totalMeals > 0) events.add('$totalMeals🍽️');
+                              if (totalBreakfast > 0) events.add('$totalBreakfast🍳');
+                              return events;
+                            }
+                            return [];
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Meal History
+                Card(
+                  margin: const EdgeInsets.all(16),
+                  child: Theme(
+                    data: Theme.of(context).copyWith(
+                      dividerColor: Colors.transparent,
+                    ),
+                    child: ExpansionTile(
+                      initiallyExpanded: _isMealHistoryExpanded,
+                      onExpansionChanged: (expanded) {
+                        setState(() => _isMealHistoryExpanded = expanded);
+                      },
+                      title: Row(
+                        children: [
+                          Icon(Icons.history, 
+                            color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Meal History',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      children: [
+                        Container(
+                          height: 300,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).cardColor,
+                            border: Border(
+                              top: BorderSide(
+                                color: Colors.grey.shade200,
+                                width: 1,
+                              ),
+                            ),
+                          ),
+                          child: StreamBuilder<QuerySnapshot>(
+                            stream: FirebaseFirestore.instance
+                                .collection('meals')
+                                .where('memberId', isEqualTo: widget.memberId)
+                                .orderBy('date', descending: true)
+                                .snapshots(),
+                            builder: (context, snapshot) {
+                              if (snapshot.hasError) {
+                                return Center(
+                                  child: Text(
+                                    'Error: ${snapshot.error}',
+                                    style: TextStyle(color: Colors.red[400]),
+                                  ),
+                                );
+                              }
+
+                              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                                return Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.no_meals_outlined,
+                                        size: 48,
+                                        color: Colors.grey[400],
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'No meal history found',
+                                        style: TextStyle(
+                                          color: Colors.grey[600],
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }
+
+                              return MediaQuery.removePadding(
+                                context: context,
+                                removeTop: true,
+                                child: ListView.builder(
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  itemCount: snapshot.data!.docs.length,
+                                  padding: const EdgeInsets.all(16),
+                                  itemBuilder: (context, index) {
+                                    final mealData = snapshot.data!.docs[index].data() as Map<String, dynamic>;
+                                    final date = DateTime.parse(mealData['date'] as String);
+                                    final mealCount = (mealData['mealCount'] as num?)?.toInt() ?? 0;
+                                    final hasBreakfast = mealData['hasBreakfast'] as bool? ?? false;
+                                    final guestMealCount = (mealData['guestMealCount'] as num?)?.toInt() ?? 0;
+                                    final guestBreakfastCount = (mealData['guestBreakfastCount'] as num?)?.toInt() ?? 0;
+
+                                    return Container(
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        borderRadius: BorderRadius.circular(12),
+                                        clipBehavior: Clip.antiAlias,
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(context).cardColor,
+                                            border: Border.all(color: Colors.grey.shade200),
+                                          ),
+                                          child: ListTile(
+                                            contentPadding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 8,
+                                            ),
+                                            title: Text(
+                                              DateFormat('MMMM d, y').format(date),
+                                              style: const TextStyle(fontWeight: FontWeight.bold),
+                                            ),
+                                            subtitle: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                if (mealCount > 0 || guestMealCount > 0)
+                                                  Text(
+                                                    'Meals: $mealCount${guestMealCount > 0 ? ' (+$guestMealCount guest)' : ''}',
+                                                  ),
+                                                if (hasBreakfast || guestBreakfastCount > 0)
+                                                  Text(
+                                                    'Breakfast: ${hasBreakfast ? "1" : "0"}${guestBreakfastCount > 0 ? ' (+$guestBreakfastCount guest)' : ''}',
+                                                  ),
+                                              ],
+                                            ),
+                                            trailing: Text(
+                                              '৳${((mealCount + guestMealCount) * widget.mealRate).toStringAsFixed(2)}',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: Theme.of(context).primaryColor,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              );
+                            },
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    TableCalendar(
-                      firstDay: DateTime(DateTime.now().year, DateTime.now().month, 1),
-                      lastDay: DateTime.now(),
-                      focusedDay: _focusedDay,
-                      calendarFormat: CalendarFormat.month,
-                      selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-                      enabledDayPredicate: (day) {
-                        final now = DateTime.now();
-                        return day.month == now.month && 
-                               day.year == now.year && 
-                               day.isBefore(now.add(const Duration(days: 1)));
-                      },
-                      availableCalendarFormats: const {
-                        CalendarFormat.month: 'Month',
-                      },
-                      onDaySelected: (selectedDay, focusedDay) {
-                        final normalizedDay = DateTime(selectedDay.year, selectedDay.month, selectedDay.day);
-                        if (selectedDay.isAfter(DateTime.now())) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Cannot select future dates'),
-                              backgroundColor: Colors.orange,
-                            ),
-                          );
-                          return;
-                        }
-                        
-                        if (_mealEvents.containsKey(normalizedDay)) {
-                          final eventData = _mealEvents[normalizedDay]!;
-                          showModalBottomSheet(
-                            context: context,
-                            isScrollControlled: true,
-                            backgroundColor: Colors.transparent,
-                            builder: (context) => Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                              child: SingleChildScrollView(
-                                padding: const EdgeInsets.all(28),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    // Header with Date and Close Button
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            TweenAnimationBuilder(
-                                              duration: const Duration(milliseconds: 500),
-                                              tween: Tween<double>(begin: 0, end: 1),
-                                              builder: (context, double value, child) {
-                                                return Opacity(
-                                                  opacity: value,
-                                                  child: child,
-                                                );
-                                              },
-                                              child: const Text(
-                                                'Meal Details',
-                                                style: TextStyle(
-                                                  fontSize: 24,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 3),
-                                            Text(
-                                              DateFormat('MMMM dd, yyyy').format(selectedDay),
-                                              style: TextStyle(
-                                                color: Colors.grey[600],
-                                                fontSize: 18,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        IconButton(
-                                          onPressed: () => Navigator.pop(context),
-                                          icon: const Icon(Icons.close),
-                                          style: IconButton.styleFrom(
-                                            backgroundColor: Colors.grey[200],
-                                            padding: const EdgeInsets.all(12),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 28),
-
-                                    // Meal Summary
-                                    _buildModernOptionContainer(
-                                      icon: Icons.restaurant_menu,
-                                      title: 'Meal Summary',
-                                      subtitle: 'Regular and guest meals',
-                                      child: Column(
-                                        children: [
-                                          _buildDetailRow(
-                                            Icons.restaurant,
-                                            'Regular Meals',
-                                            '${eventData['mealCount']} meals',
-                                            color: _getMealColor(eventData['mealCount'] as int? ?? 0),
-                                          ),
-                                          if (eventData['guestMealCount'] > 0)
-                                            _buildDetailRow(
-                                              Icons.people,
-                                              'Guest Meals',
-                                              '${eventData['guestMealCount']} meals',
-                                              color: Colors.blue,
-                                            ),
-                                          if (eventData['hasBreakfast'] == true)
-                                            _buildDetailRow(
-                                              Icons.free_breakfast,
-                                              'Breakfast',
-                                              'Yes${eventData['guestBreakfastCount'] > 0 ? ' (+${eventData['guestBreakfastCount']} guest)' : ''}',
-                                              color: Colors.orange,
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 24),
-
-                                    // Action Buttons
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: FilledButton.icon(
-                                            onPressed: () {
-                                              Navigator.pop(context);
-                                              if (eventData['id'] != null) {
-                                                final mealEntry = MealEntry(
-                                                  id: eventData['id']!,
-                                                  memberId: widget.memberId,
-                                                  date: selectedDay,
-                                                  mealCount: (eventData['mealCount'] as num?)?.toInt() ?? 0,
-                                                  hasBreakfast: eventData['hasBreakfast'] as bool? ?? false,
-                                                  guestMealCount: (eventData['guestMealCount'] as num?)?.toInt() ?? 0,
-                                                  guestBreakfastCount: (eventData['guestBreakfastCount'] as num?)?.toInt() ?? 0,
-                                                );
-                                                _showMealEntryDialog(selectedDay, mealEntry);
-                                              }
-                                            },
-                                            icon: const Icon(Icons.edit),
-                                            label: const Text('Edit Entry'),
-                                            style: FilledButton.styleFrom(
-                                              padding: const EdgeInsets.symmetric(vertical: 12),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: OutlinedButton.icon(
-                                            onPressed: () {
-                                              Navigator.pop(context);
-                                              if (eventData['id'] != null) {
-                                                _deleteMeal(
-                                                  eventData['id']!,
-                                                  (eventData['mealCount'] as num?)?.toInt() ?? 0,
-                                                );
-                                              }
-                                            },
-                                            icon: const Icon(Icons.delete),
-                                            label: const Text('Delete'),
-                                            style: OutlinedButton.styleFrom(
-                                              foregroundColor: Colors.red,
-                                              padding: const EdgeInsets.symmetric(vertical: 12),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                          return;
-                        }
-
-                        setState(() {
-                          _selectedDay = selectedDay;
-                          _focusedDay = focusedDay;
-                        });
-                        _showMealEntryDialog(selectedDay);
-                      },
-                      onFormatChanged: (format) {
-                        setState(() {
-                          _calendarFormat = format;
-                        });
-                      },
-                      onPageChanged: (focusedDay) {
-                        _focusedDay = focusedDay;
-                      },
-                      calendarStyle: CalendarStyle(
-                        todayDecoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primaryContainer,
-                          shape: BoxShape.circle,
-                        ),
-                        selectedDecoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        markerDecoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.secondary,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      eventLoader: (day) {
-                        final normalizedDay = DateTime(day.year, day.month, day.day);
-                        if (_mealEvents.containsKey(normalizedDay)) {
-                          final eventData = _mealEvents[normalizedDay]!;
-                          final regularMeals = eventData['mealCount'] as int? ?? 0;
-                          final guestMeals = eventData['guestMealCount'] as int? ?? 0;
-                          final totalMeals = regularMeals + guestMeals;
-                          
-                          final hasBreakfast = eventData['hasBreakfast'] as bool? ?? false;
-                          final guestBreakfast = eventData['guestBreakfastCount'] as int? ?? 0;
-                          final totalBreakfast = (hasBreakfast ? 1 : 0) + guestBreakfast;
-
-                          final events = <String>[];
-                          if (totalMeals > 0) events.add('$totalMeals🍽️');
-                          if (totalBreakfast > 0) events.add('$totalBreakfast🍳');
-                          return events;
-                        }
-                        return [];
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Meal History
-            Card(
-              margin: const EdgeInsets.all(16),
-              child: Theme(
-                data: Theme.of(context).copyWith(
-                  dividerColor: Colors.transparent,
-                ),
-                child: ExpansionTile(
-                  initiallyExpanded: _isMealHistoryExpanded,
-                  onExpansionChanged: (expanded) {
-                    setState(() => _isMealHistoryExpanded = expanded);
-                  },
-                  title: Row(
-                    children: [
-                      Icon(Icons.history, 
-                        color: Theme.of(context).colorScheme.primary),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Meal History',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
                   ),
-                  children: [
-                    Container(
-                      height: 300,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).cardColor,
-                        border: Border(
-                          top: BorderSide(
-                            color: Colors.grey.shade200,
-                            width: 1,
-                          ),
-                        ),
-                      ),
-                      child: StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('meals')
-                            .where('memberId', isEqualTo: widget.memberId)
-                            .orderBy('date', descending: true)
-                            .snapshots(),
-                        builder: (context, snapshot) {
-                          if (snapshot.hasError) {
-                            return Center(
-                              child: Text(
-                                'Error: ${snapshot.error}',
-                                style: TextStyle(color: Colors.red[400]),
-                              ),
-                            );
-                          }
-
-                          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                            return Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.no_meals_outlined,
-                                    size: 48,
-                                    color: Colors.grey[400],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'No meal history found',
-                                    style: TextStyle(
-                                      color: Colors.grey[600],
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }
-
-                          return MediaQuery.removePadding(
-                            context: context,
-                            removeTop: true,
-                            child: ListView.builder(
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              itemCount: snapshot.data!.docs.length,
-                              padding: const EdgeInsets.all(16),
-                              itemBuilder: (context, index) {
-                                final mealData = snapshot.data!.docs[index].data() as Map<String, dynamic>;
-                                final date = DateTime.parse(mealData['date'] as String);
-                                final mealCount = (mealData['mealCount'] as num?)?.toInt() ?? 0;
-                                final hasBreakfast = mealData['hasBreakfast'] as bool? ?? false;
-                                final guestMealCount = (mealData['guestMealCount'] as num?)?.toInt() ?? 0;
-                                final guestBreakfastCount = (mealData['guestBreakfastCount'] as num?)?.toInt() ?? 0;
-
-                                return Container(
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    borderRadius: BorderRadius.circular(12),
-                                    clipBehavior: Clip.antiAlias,
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: Theme.of(context).cardColor,
-                                        border: Border.all(color: Colors.grey.shade200),
-                                      ),
-                                      child: ListTile(
-                                        contentPadding: const EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                          vertical: 8,
-                                        ),
-                                        title: Text(
-                                          DateFormat('MMMM d, y').format(date),
-                                          style: const TextStyle(fontWeight: FontWeight.bold),
-                                        ),
-                                        subtitle: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            if (mealCount > 0 || guestMealCount > 0)
-                                              Text(
-                                                'Meals: $mealCount' +
-                                                (guestMealCount > 0 ? ' (+$guestMealCount guest)' : ''),
-                                              ),
-                                            if (hasBreakfast || guestBreakfastCount > 0)
-                                              Text(
-                                                'Breakfast: ${hasBreakfast ? "1" : "0"}' +
-                                                (guestBreakfastCount > 0 ? ' (+$guestBreakfastCount guest)' : ''),
-                                              ),
-                                          ],
-                                        ),
-                                        trailing: Text(
-                                          '৳${((mealCount + guestMealCount) * widget.mealRate).toStringAsFixed(2)}',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: Theme.of(context).primaryColor,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showMealEntryDialog(DateTime.now()),
@@ -616,7 +719,7 @@ class _MemberDetailsScreenState extends State<MemberDetailsScreen> {
                     icon: Icons.restaurant_menu,
                     title: 'Regular Meals',
                     subtitle: 'Select number of meals',
-                    child: Container(
+                    child: SizedBox(
                       height: 70,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -735,7 +838,7 @@ class _MemberDetailsScreenState extends State<MemberDetailsScreen> {
                                   style: TextStyle(fontSize: 16),
                                 ),
                                 _buildCounter(
-                                  count: guestMealCount,
+                                  value: guestMealCount,
                                   onDecrement: () => setDialogState(() {
                                     if (guestMealCount > 1) guestMealCount--;
                                   }),
@@ -769,7 +872,7 @@ class _MemberDetailsScreenState extends State<MemberDetailsScreen> {
                                   style: TextStyle(fontSize: 16),
                                 ),
                                 _buildCounter(
-                                  count: guestBreakfastCount,
+                                  value: guestBreakfastCount,
                                   onDecrement: () => setDialogState(() {
                                     if (guestBreakfastCount > 1) guestBreakfastCount--;
                                   }),
@@ -924,10 +1027,7 @@ class _MemberDetailsScreenState extends State<MemberDetailsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Added: $mealCount meals' +
-              (guestMealCount > 0 ? ' ($guestMealCount guest meals)' : '') +
-              (hasBreakfast ? ' + breakfast' : '') +
-              (guestBreakfastCount > 0 ? ' ($guestBreakfastCount guest breakfasts)' : ''),
+              _buildMealText(mealCount, guestMealCount, hasBreakfast, guestBreakfastCount),
             ),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
@@ -969,7 +1069,7 @@ class _MemberDetailsScreenState extends State<MemberDetailsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Meal deleted successfully'),
+            content: const Text('Meal deleted successfully'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
@@ -1001,7 +1101,7 @@ class _MemberDetailsScreenState extends State<MemberDetailsScreen> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Meal updated successfully'),
+            content: const Text('Meal updated successfully'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
@@ -1028,7 +1128,7 @@ class _MemberDetailsScreenState extends State<MemberDetailsScreen> {
   }
 
   Widget _buildCounter({
-    required int count,
+    required int value,
     required VoidCallback onDecrement,
     required VoidCallback onIncrement,
   }) {
@@ -1036,7 +1136,7 @@ class _MemberDetailsScreenState extends State<MemberDetailsScreen> {
       children: [
         IconButton(
           icon: const Icon(Icons.remove_circle_outline),
-          onPressed: count > 1 ? onDecrement : null,
+          onPressed: value > 1 ? onDecrement : null,
           style: IconButton.styleFrom(
             backgroundColor: Colors.grey[200],
             padding: const EdgeInsets.all(8),
@@ -1048,10 +1148,10 @@ class _MemberDetailsScreenState extends State<MemberDetailsScreen> {
             return ScaleTransition(scale: animation, child: child);
           },
           child: Padding(
-            key: ValueKey<int>(count),
+            key: ValueKey<int>(value),
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              count.toString(),
+              value.toString(),
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -1158,5 +1258,16 @@ class _MemberDetailsScreenState extends State<MemberDetailsScreen> {
         ],
       ),
     );
+  }
+
+  String _buildMealText(int mealCount, int guestMealCount, bool hasBreakfast, int guestBreakfastCount) {
+    return 'Added: $mealCount meals'
+           '${guestMealCount > 0 ? ' ($guestMealCount guest meals)' : ''}'
+           '${hasBreakfast ? ' + breakfast' : ''}'
+           '${guestBreakfastCount > 0 ? ' ($guestBreakfastCount guest breakfasts)' : ''}';
+  }
+
+  Widget _buildWhitespace() {
+    return const SizedBox(height: 16);
   }
 } 
